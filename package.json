@@ -1,0 +1,12 @@
+{
+  "name": "agence-elite-lws-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Connecteur MCP lecture seule des domaines d'Agence Elite (DNS, sous-domaines, renouvellement) pour Claude et ChatGPT.",
+  "scripts": {
+    "test": "node --test",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}
