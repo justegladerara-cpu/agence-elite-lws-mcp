@@ -51,7 +51,7 @@ zone DNS `GET/POST/DELETE /domain/{domaine}/zdns` (repris de la bibliothèque li
 
 ### Serveur à IP fixe (LWS l'exige)
 
-1. Louer un petit VPS Debian/Ubuntu (1 Go suffit) et noter son IP.
+1. Créer un serveur Ubuntu gratuit (Oracle Cloud « Always Free », IP publique réservée gratuite ; ouvrir les ports 80 et 443 dans la « Security List ») ou un petit VPS, et noter son IP.
 2. Dans LWS, DNS de agence-elite.fr : ajouter `lws` en type A vers cette IP.
 3. Dans panel.lws.fr › Api LWS : autoriser cette IP, copier l'identifiant et la clé.
 4. Sur le VPS : `curl -fsSL https://raw.githubusercontent.com/justegladerara-cpu/agence-elite-lws-mcp/main/deploiement/installer.sh | sh`,

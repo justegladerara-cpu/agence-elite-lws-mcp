@@ -2,6 +2,11 @@
 # Installation sur un VPS Debian/Ubuntu neuf, en root : sh installer.sh
 set -e
 apt-get update -y && apt-get install -y docker.io docker-compose-v2 git openssl
+# Oracle Cloud (offre gratuite) bloque les ports web dans le pare-feu du système : on ouvre 80 et 443.
+if iptables -L INPUT -n 2>/dev/null | grep -q REJECT; then
+  iptables -I INPUT 5 -p tcp --dport 80 -j ACCEPT && iptables -I INPUT 5 -p tcp --dport 443 -j ACCEPT
+  command -v netfilter-persistent >/dev/null && netfilter-persistent save || true
+fi
 [ -d /opt/connecteur ] || git clone https://github.com/justegladerara-cpu/agence-elite-lws-mcp /opt/connecteur
 cd /opt/connecteur/deploiement
 if [ ! -f .env ]; then
