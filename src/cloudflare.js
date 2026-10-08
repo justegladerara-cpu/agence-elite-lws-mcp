@@ -48,13 +48,34 @@ const resume = (d) => ({
   certificat: d.validation_data?.status ?? null,
 });
 
+// Fonctions partagées par le connecteur IA et le bouton du super admin de la plateforme.
+export async function listerAdresses(env, f = fetch) {
+  return { projet: projet(env), adresses: (await appelCf(env, 'GET', '/domains', undefined, f)).map(resume) };
+}
+
+export async function creerAdresse(env, sousDomaine, f = fetch) {
+  const nom = nomComplet(sousDomaine);
+  const existants = await appelCf(env, 'GET', '/domains', undefined, f);
+  const deja = existants.find((d) => d.name === nom);
+  const d = deja || (await appelCf(env, 'POST', '/domains', { name: nom }, f));
+  const dns = await resoudre(nom, 'CNAME', f).catch(() => null);
+  const pointe = dns?.enregistrements?.some((r) => r.type === 'CNAME');
+  return {
+    ...resume(d),
+    deja_existant: Boolean(deja),
+    dns: pointe
+      ? 'OK'
+      : `le nom ne pointe pas encore vers la plateforme : il faut une fois pour toutes la ligne CNAME « * » → ${projet(env)}.pages.dev chez LWS`,
+  };
+}
+
 export const OUTILS_CF = [
   {
     name: 'lister_sous_domaines_clients',
     description: `Liste les adresses clients branchées sur la plateforme (ex. thedream.${DOMAINE}) et leur état. Lecture seule.`,
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true },
-    executer: async (_args, f, env) => ({ projet: projet(env), adresses: (await appelCf(env, 'GET', '/domains', undefined, f)).map(resume) }),
+    executer: (_args, f, env) => listerAdresses(env, f),
   },
   {
     name: 'creer_sous_domaine_client',
@@ -70,21 +91,9 @@ export const OUTILS_CF = [
       required: ['sous_domaine', 'confirmation'],
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    executer: async (args, f, env) => {
+    executer: (args, f, env) => {
       if (args.confirmation !== 'OUI') throw new Error('Il faut l\'accord de Juste, puis confirmation « OUI »');
-      const nom = nomComplet(args.sous_domaine);
-      const existants = await appelCf(env, 'GET', '/domains', undefined, f);
-      const deja = existants.find((d) => d.name === nom);
-      const d = deja || (await appelCf(env, 'POST', '/domains', { name: nom }, f));
-      const dns = await resoudre(nom, 'CNAME', f).catch(() => null);
-      const pointe = dns?.enregistrements?.some((r) => r.type === 'CNAME');
-      return {
-        ...resume(d),
-        deja_existant: Boolean(deja),
-        dns: pointe
-          ? 'OK'
-          : `le nom ne pointe pas encore vers la plateforme : il faut une fois pour toutes la ligne CNAME « * » → ${projet(env)}.pages.dev chez LWS`,
-      };
+      return creerAdresse(env, args.sous_domaine, f);
     },
   },
 ];
