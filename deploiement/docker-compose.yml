@@ -1,0 +1,16 @@
+# Serveur à IP fixe : connecteur + Caddy (HTTPS automatique pour lws.agence-elite.fr).
+# Secrets dans deploiement/.env (jamais dans Git) : LWS_LOGIN, LWS_CLE, MCP_JETON.
+services:
+  connecteur:
+    build: ..
+    restart: unless-stopped
+    env_file: .env
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+volumes:
+  caddy_data:

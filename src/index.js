@@ -1,9 +1,11 @@
 // Serveur MCP « Agence Elite LWS » (transport Streamable HTTP, sans état) pour Cloudflare Workers.
 // Point d'entrée : POST /mcp (JSON-RPC 2.0). Utilisable depuis Claude (connecteur personnalisé) et ChatGPT.
 import { OUTILS } from './outils.js';
+import { OUTILS_LWS, lwsActif } from './lws.js';
 
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-const INFO = { name: 'agence-elite-lws', title: 'Agence Elite — Domaines LWS', version: '0.1.0' };
+const INFO = { name: 'agence-elite-lws', title: 'Agence Elite — Domaines LWS', version: '0.2.0' };
+const outils = (env) => (lwsActif(env) ? [...OUTILS, ...OUTILS_LWS] : OUTILS);
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'POST, GET, OPTIONS',
@@ -14,7 +16,7 @@ const json = (corps, statut = 200) =>
   new Response(JSON.stringify(corps), { status: statut, headers: { 'content-type': 'application/json', ...CORS } });
 const erreur = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 
-export async function traiter(msg, f = fetch) {
+export async function traiter(msg, f = fetch, env = {}) {
   if (!msg || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') return erreur(msg?.id, -32600, 'Requête invalide');
   const { id, method, params = {} } = msg;
   if (id === undefined) return null; // notification (ex. notifications/initialized) : pas de réponse
@@ -30,8 +32,8 @@ export async function traiter(msg, f = fetch) {
           capabilities: { tools: { listChanged: false } },
           serverInfo: INFO,
           instructions:
-            'Connecteur en lecture seule des domaines d\'Agence Elite (DNS publics, sous-domaines, renouvellement). ' +
-            'Il ne modifie rien. Réponds à Juste en français simple.',
+            'Connecteur des domaines d\'Agence Elite (DNS, sous-domaines, renouvellement, compte LWS). Réponds à Juste en français simple. ' +
+            'Toute modification DNS passe par lws_dns_preparer, puis l\'accord explicite de Juste, puis lws_dns_appliquer. Jamais sans son oui.',
         },
       };
     }
@@ -41,13 +43,13 @@ export async function traiter(msg, f = fetch) {
       return {
         jsonrpc: '2.0',
         id,
-        result: { tools: OUTILS.map(({ executer, ...o }) => o) },
+        result: { tools: outils(env).map(({ executer, ...o }) => o) },
       };
     case 'tools/call': {
-      const outil = OUTILS.find((o) => o.name === params.name);
+      const outil = outils(env).find((o) => o.name === params.name);
       if (!outil) return erreur(id, -32602, `Outil inconnu : ${params.name}`);
       try {
-        const resultat = await outil.executer(params.arguments || {}, f);
+        const resultat = await outil.executer(params.arguments || {}, f, env);
         return {
           jsonrpc: '2.0',
           id,
@@ -63,12 +65,16 @@ export async function traiter(msg, f = fetch) {
 }
 
 export default {
-  async fetch(requete) {
+  async fetch(requete, env = {}) {
     const url = new URL(requete.url);
+    // Avec MCP_JETON (obligatoire dès que la clé LWS est configurée), l'adresse devient /mcp/<jeton> : elle sert de mot de passe.
+    const jeton = env.MCP_JETON || '';
+    if (lwsActif(env) && jeton.length < 24) return json({ erreur: 'MCP_JETON manquant ou trop court (24 caractères minimum)' }, 500);
+    const chemin = jeton ? `/mcp/${jeton}` : '/mcp';
     if (requete.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     if (url.pathname === '/' && requete.method === 'GET')
-      return json({ ...INFO, mcp: `${url.origin}/mcp`, outils: OUTILS.map((o) => o.name), mode: 'lecture seule' });
-    if (url.pathname !== '/mcp') return json({ erreur: 'introuvable' }, 404);
+      return json({ ...INFO, outils: outils(env).length, mode: lwsActif(env) ? 'compte LWS' : 'lecture seule' });
+    if (url.pathname !== chemin) return json({ erreur: 'introuvable' }, 404);
     if (requete.method !== 'POST') return new Response(null, { status: 405, headers: { allow: 'POST', ...CORS } });
 
     let corps;
@@ -78,10 +84,10 @@ export default {
       return json(erreur(null, -32700, 'JSON illisible'), 400);
     }
     if (Array.isArray(corps)) {
-      const reponses = (await Promise.all(corps.map((m) => traiter(m)))).filter(Boolean);
+      const reponses = (await Promise.all(corps.map((m) => traiter(m, fetch, env)))).filter(Boolean);
       return reponses.length ? json(reponses) : new Response(null, { status: 202, headers: CORS });
     }
-    const reponse = await traiter(corps);
+    const reponse = await traiter(corps, fetch, env);
     return reponse ? json(reponse) : new Response(null, { status: 202, headers: CORS });
   },
 };

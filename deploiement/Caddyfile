@@ -1,0 +1,3 @@
+lws.agence-elite.fr {
+	reverse_proxy connecteur:8787
+}

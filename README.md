@@ -27,10 +27,33 @@ La configuration attendue est dans `ATTENDU` (`src/outils.js`).
 
 `npm test` (Node 20+) : tests hors ligne, réseau simulé.
 
-## Phase 2 (pas encore faite)
+## Phase 2 : compte LWS (avec la clé)
 
-API LWS (liste des domaines et services, facturation, modification DNS).
-- La clé API LWS se range uniquement dans les secrets du serveur (`wrangler secret put LWS_API_KEY`), jamais dans Claude ou ChatGPT.
-- LWS exige des adresses IP autorisées : il faut un hébergement à IP fixe (Workers n'en a pas).
-- Le connecteur devra alors être protégé par une connexion (OAuth).
-- Toute modification DNS demandera une confirmation explicite.
+Outils ajoutés quand `LWS_LOGIN` et `LWS_CLE` sont dans les secrets du serveur :
+
+| Outil | Ce qu'il fait |
+|---|---|
+| `lws_zone_dns` | Zone DNS complète du domaine dans LWS (avec l'id de chaque ligne). |
+| `lws_infos_domaine` | Infos LWS du domaine (état, expiration, renouvellement auto). |
+| `lws_lecture` | Lecture libre (GET) dans l'API LWS : hébergements, compte, solde, factures. |
+| `lws_dns_preparer` | Prépare un ajout, une modification ou une suppression : plan avant → après, **rien n'est changé**. |
+| `lws_dns_appliquer` | Applique le plan, seulement avec confirmation « OUI » après l'accord de Juste. |
+
+Sécurités :
+- La clé reste dans les secrets du serveur (`deploiement/.env`), jamais dans Git, Claude ou ChatGPT.
+- Le plan est signé (HMAC) et valable 15 minutes ; un plan modifié ou une zone qui a changé entre-temps est refusé.
+- Si la nouvelle valeur est refusée par LWS lors d'une modification, l'ancienne ligne est remise.
+- Seuls les domaines de `LWS_DOMAINES_MODIFIABLES` (défaut `agence-elite.fr`) sont modifiables.
+- L'adresse devient `/mcp/<MCP_JETON>` : elle sert de mot de passe, ne la partage pas.
+
+API utilisée : `https://api.lws.net/v1`, en-têtes `X-Auth-Login` / `X-Auth-Pass`,
+zone DNS `GET/POST/DELETE /domain/{domaine}/zdns` (repris de la bibliothèque libdns-lws, la doc officielle n'étant pas lisible par les IA).
+
+### Serveur à IP fixe (LWS l'exige)
+
+1. Louer un petit VPS Debian/Ubuntu (1 Go suffit) et noter son IP.
+2. Dans LWS, DNS de agence-elite.fr : ajouter `lws` en type A vers cette IP.
+3. Dans panel.lws.fr › Api LWS : autoriser cette IP, copier l'identifiant et la clé.
+4. Sur le VPS : `curl -fsSL https://raw.githubusercontent.com/justegladerara-cpu/agence-elite-lws-mcp/main/deploiement/installer.sh | sh`,
+   remplir `LWS_LOGIN` et `LWS_CLE` dans `/opt/connecteur/deploiement/.env`, relancer la même commande.
+5. Le script affiche l'adresse `https://lws.agence-elite.fr/mcp/<jeton>` à mettre dans Claude et ChatGPT.
