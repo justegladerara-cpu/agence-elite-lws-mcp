@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { traiter } from '../src/index.js';
 
-const ENV = { CF_API_TOKEN: 'tok', CF_ACCOUNT_ID: 'acc', MCP_JETON: 'k'.repeat(30) };
+const ENV = { CF_API_TOKEN: 'tok', MCP_JETON: 'k'.repeat(30) };
 
 function fauxCf({ wildcard = true } = {}) {
   const domaines = [{ name: 'saas.agence-elite.fr', status: 'active', validation_data: { status: 'active' } }];
@@ -14,6 +14,7 @@ function fauxCf({ wildcard = true } = {}) {
       const Answer = wildcard && nom.endsWith('.agence-elite.fr') ? [{ name: `${nom}.`, type: 5, TTL: 300, data: 'agence-elite-saas.pages.dev.' }] : [];
       return Response.json({ Status: 0, Answer });
     }
+    if (u.pathname === '/client/v4/accounts') return Response.json({ success: true, result: [{ id: 'acc' }] });
     assert.equal(u.pathname, '/client/v4/accounts/acc/pages/projects/agence-elite-saas/domains');
     assert.equal(init.headers.authorization, 'Bearer tok');
     if (init.method === 'POST') {

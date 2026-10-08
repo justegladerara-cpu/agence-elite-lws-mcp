@@ -1,17 +1,17 @@
 // Sous-domaines clients (ex. thedream.agence-elite.fr) branchés sur la plateforme hébergée par Cloudflare Pages.
 // Prérequis faits une seule fois par Juste : chez LWS une ligne CNAME « * » vers le projet Pages, et dans les secrets
-// du serveur CF_API_TOKEN (droit « Cloudflare Pages : Modifier ») + CF_ACCOUNT_ID. Aucune IP fixe nécessaire.
+// du serveur CF_API_TOKEN (droit « Cloudflare Pages : Modifier »). CF_ACCOUNT_ID est facultatif (trouvé avec le jeton). Aucune IP fixe nécessaire.
 import { normaliserNom, resoudre } from './outils.js';
 
 const API = 'https://api.cloudflare.com/client/v4';
 const DOMAINE = 'agence-elite.fr';
 const RESERVES = ['www', 'crm', 'saas', 'mail', 'site', 'lws', 'api', 'admin', 'smtp', 'imap', 'pop', 'webmail', 'ftp'];
 
-export const cfActif = (env) => Boolean(env?.CF_API_TOKEN && env?.CF_ACCOUNT_ID);
+export const cfActif = (env) => Boolean(env?.CF_API_TOKEN);
 const projet = (env) => env.CF_PROJET || 'agence-elite-saas';
 
-async function appelCf(env, methode, chemin, corps, f = fetch) {
-  const rep = await f(`${API}/accounts/${env.CF_ACCOUNT_ID}/pages/projects/${projet(env)}${chemin}`, {
+async function requeteCf(env, methode, url, corps, f) {
+  const rep = await f(url, {
     method: methode,
     headers: { authorization: `Bearer ${env.CF_API_TOKEN}`, 'content-type': 'application/json' },
     body: corps === undefined ? undefined : JSON.stringify(corps),
@@ -22,6 +22,17 @@ async function appelCf(env, methode, chemin, corps, f = fetch) {
     throw new Error(`Cloudflare a refusé : ${msg}`);
   }
   return json.result;
+}
+
+async function compte(env, f) {
+  if (env.CF_ACCOUNT_ID) return env.CF_ACCOUNT_ID;
+  const comptes = await requeteCf(env, 'GET', `${API}/accounts`, undefined, f);
+  if (comptes?.length !== 1) throw new Error('Plusieurs comptes Cloudflare (ou aucun) : ajoute la variable CF_ACCOUNT_ID');
+  return comptes[0].id;
+}
+
+async function appelCf(env, methode, chemin, corps, f = fetch) {
+  return requeteCf(env, methode, `${API}/accounts/${await compte(env, f)}/pages/projects/${projet(env)}${chemin}`, corps, f);
 }
 
 function nomComplet(sousDomaine) {
